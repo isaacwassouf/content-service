@@ -20,9 +20,6 @@ type ContentManagementService struct {
 	pb.UnimplementedContentServiceServer
 	contentManagementServiceDB *db.ContentManagementServiceDB
 }
-type Message struct {
-	Content string
-}
 
 func (s *ContentManagementService) GetContent(ctx context.Context, in *pb.GetContentRequest) (*pb.GetContentResponse, error) {
 	// check if the table exists
