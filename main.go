@@ -77,6 +77,33 @@ func (s *ContentManagementService) GetContent(ctx context.Context, in *pb.GetCon
 	return &pb.GetContentResponse{Content: dataBytes}, nil
 }
 
+func (s *ContentManagementService) DeleteContent(ctx context.Context, in *pb.DeleteContentRequest) (*pb.DeleteContentResponse, error) {
+	// check if the table exists
+	tableExists, err := utils.CheckTableExists(s.contentManagementServiceDB.Db, in.TableName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to check if table exists")
+	}
+	if !tableExists {
+		return nil, status.Error(codes.NotFound, "Table does not exist")
+	}
+	// format the query
+	query := fmt.Sprintf("DELETE FROM %s WHERE id = ?", in.TableName)
+	// execute the query
+	result, err := s.contentManagementServiceDB.Db.Exec(query, in.EntityId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to delete entity")
+	}
+	// check if the entity was deleted
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to get rows affected")
+	}
+	if rowsAffected == 0 {
+		return nil, status.Error(codes.NotFound, "Entity not found")
+	}
+
+	return &pb.DeleteContentResponse{Message: "Deleted the entity successfully"}, nil
+}
 func main() {
 	// load the environment variables from the .env file
 	err := utils.LoadEnvVarsFromFile()
