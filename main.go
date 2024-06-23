@@ -139,6 +139,41 @@ func (s *ContentManagementService) CreateContent(ctx context.Context, in *pb.Cre
 	return &pb.CreateContentResponse{Id: id, Message: fmt.Sprintf("Created entity with id %d", id)}, nil
 }
 
+func (s *ContentManagementService) UpdateContent(ctx context.Context, in *pb.UpdateContentRequest) (*pb.UpdateContentResponse, error) {
+	tableExists, err := utils.CheckTableExists(s.contentManagementServiceDB.Db, in.TableName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to check if table exists")
+	}
+	if !tableExists {
+		return nil, status.Error(codes.NotFound, "Table does not exist")
+	}
+
+	var columns []string
+	var values []interface{}
+
+	for col, val := range in.Data {
+		columns = append(columns, fmt.Sprintf("%s = ?", col))
+		values = append(values, val)
+	}
+
+	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", in.TableName, strings.Join(columns, ","))
+
+	result, err := s.contentManagementServiceDB.Db.Exec(query, append(values, in.EntityId)...)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to update entity")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to get rows affected")
+	}
+	if rowsAffected == 0 {
+		return nil, status.Error(codes.NotFound, "Entity not found")
+	}
+
+	return &pb.UpdateContentResponse{Message: "Updated the entity successfully"}, nil
+}
+
 func main() {
 	// load the environment variables from the .env file
 	err := utils.LoadEnvVarsFromFile()
