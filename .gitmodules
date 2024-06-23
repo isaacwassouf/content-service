@@ -1,0 +1,3 @@
+[submodule "protobufs/content_management_service"]
+	path = protobufs/content_management_service
+	url = git@github.com:isaacwassouf/content-service-protobufs.git
