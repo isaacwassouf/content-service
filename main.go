@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"log"
 	"net"
-
-	"google.golang.org/grpc"
+	"strings"
 
 	db "github.com/isaacwassouf/content-service/database"
 	pb "github.com/isaacwassouf/content-service/protobufs/content_management_service"
@@ -104,6 +104,41 @@ func (s *ContentManagementService) DeleteContent(ctx context.Context, in *pb.Del
 
 	return &pb.DeleteContentResponse{Message: "Deleted the entity successfully"}, nil
 }
+
+func (s *ContentManagementService) CreateContent(ctx context.Context, in *pb.CreateContentRequest) (*pb.CreateContentResponse, error) {
+	tableExists, err := utils.CheckTableExists(s.contentManagementServiceDB.Db, in.TableName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to check if table exists")
+	}
+	if !tableExists {
+		return nil, status.Error(codes.NotFound, "Table does not exist")
+	}
+
+	var columns []string
+	var placeholders []string
+	var values []interface{}
+
+	for col, val := range in.Data {
+		columns = append(columns, col)
+		placeholders = append(placeholders, "?")
+		values = append(values, val)
+	}
+
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", in.TableName, strings.Join(columns, ","), strings.Join(placeholders, ","))
+
+	result, err := s.contentManagementServiceDB.Db.Exec(query, values...)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to insert entity")
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to get last insert ID")
+	}
+
+	return &pb.CreateContentResponse{Id: id, Message: fmt.Sprintf("Created entity with id %d", id)}, nil
+}
+
 func main() {
 	// load the environment variables from the .env file
 	err := utils.LoadEnvVarsFromFile()
