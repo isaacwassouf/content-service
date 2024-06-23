@@ -174,6 +174,79 @@ func (s *ContentManagementService) UpdateContent(ctx context.Context, in *pb.Upd
 	return &pb.UpdateContentResponse{Message: "Updated the entity successfully"}, nil
 }
 
+func (s *ContentManagementService) ListContent(ctx context.Context, in *pb.ListContentRequest) (*pb.ListContentResponse, error) {
+	// check if the table exists
+	tableExists, err := utils.CheckTableExists(s.contentManagementServiceDB.Db, in.TableName)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to check if table exists")
+	}
+	if !tableExists {
+		return nil, status.Error(codes.NotFound, "Table does not exist")
+	}
+
+	// get the total number of rows
+	var totalRows int
+	totalRowsQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s", in.TableName)
+	err = s.contentManagementServiceDB.Db.QueryRow(totalRowsQuery).Scan(&totalRows)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to get total rows")
+	}
+
+	// get the total number of pages
+	totalPages := totalRows / int(in.PerPage)
+	if totalRows%int(in.PerPage) != 0 {
+		totalPages++
+	}
+
+	// Query for the entities with limit and offset for pagination
+	query := fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", in.TableName)
+	rows, err := s.contentManagementServiceDB.Db.Query(query, in.PerPage, in.Page)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to query the database")
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to get columns")
+	}
+
+	var entities [][]byte
+
+	for rows.Next() {
+		columnPointers := make([]interface{}, len(cols))
+		columns := make([]interface{}, len(cols))
+
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			return nil, status.Error(codes.Internal, "Failed to scan row")
+		}
+
+		data := make(map[string]interface{}, len(cols))
+		for i, colName := range cols {
+			val := columnPointers[i].(*interface{})
+			// Check if the value is a byte slice and convert it to a string
+			if b, ok := (*val).([]byte); ok {
+				data[colName] = string(b)
+			} else {
+				data[colName] = *val
+			}
+		}
+
+		dataBytes, err := json.Marshal(data)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "Failed to marshal data")
+		}
+
+		entities = append(entities, dataBytes)
+	}
+
+	return &pb.ListContentResponse{Page: in.Page, PerPage: in.PerPage, TotalPages: int32(totalPages), Entities: entities}, nil
+}
+
 func main() {
 	// load the environment variables from the .env file
 	err := utils.LoadEnvVarsFromFile()
