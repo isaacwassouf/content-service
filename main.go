@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"log"
 	"net"
 	"strings"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	db "github.com/isaacwassouf/content-service/database"
 	pb "github.com/isaacwassouf/content-service/protobufs/content_management_service"
@@ -200,7 +201,7 @@ func (s *ContentManagementService) ListContent(ctx context.Context, in *pb.ListC
 
 	// Query for the entities with limit and offset for pagination
 	query := fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", in.TableName)
-	rows, err := s.contentManagementServiceDB.Db.Query(query, in.PerPage, in.Page)
+	rows, err := s.contentManagementServiceDB.Db.Query(query, in.PerPage, in.PerPage*(in.Page-1))
 	if err != nil {
 		return nil, status.Error(codes.Internal, "Failed to query the database")
 	}
