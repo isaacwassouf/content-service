@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -32,10 +33,22 @@ func (s *ContentManagementService) GetContent(ctx context.Context, in *pb.GetCon
 		return nil, status.Error(codes.NotFound, "Table does not exist")
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s WHERE id = ? LIMIT 1", in.TableName)
-	rows, err := s.contentManagementServiceDB.Db.Query(query, in.EntityId)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to query the database")
+	var query string
+	var rows *sql.Rows
+	if in.CreatorId == 0 {
+		query = fmt.Sprintf("SELECT * FROM %s WHERE id = ? LIMIT 1", in.TableName)
+
+		rows, err = s.contentManagementServiceDB.Db.Query(query, in.EntityId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "Failed to query the database")
+		}
+	} else {
+		query = fmt.Sprintf("SELECT * FROM %s WHERE id = ? AND creator_id = ? LIMIT 1", in.TableName)
+
+		rows, err = s.contentManagementServiceDB.Db.Query(query, in.EntityId, in.CreatorId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "Failed to query the database")
+		}
 	}
 
 	defer rows.Close()
@@ -87,13 +100,25 @@ func (s *ContentManagementService) DeleteContent(ctx context.Context, in *pb.Del
 	if !tableExists {
 		return nil, status.Error(codes.NotFound, "Table does not exist")
 	}
-	// format the query
-	query := fmt.Sprintf("DELETE FROM %s WHERE id = ?", in.TableName)
-	// execute the query
-	result, err := s.contentManagementServiceDB.Db.Exec(query, in.EntityId)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to delete entity")
+
+	var query string
+	var result sql.Result
+	if in.CreatorId == 0 {
+		query = fmt.Sprintf("DELETE FROM %s WHERE id = ?", in.TableName)
+
+		result, err = s.contentManagementServiceDB.Db.Exec(query, in.EntityId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+	} else {
+		query = fmt.Sprintf("DELETE FROM %s WHERE id = ? AND creator_id = ?", in.TableName)
+
+		result, err = s.contentManagementServiceDB.Db.Exec(query, in.EntityId, in.CreatorId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
+
 	// check if the entity was deleted
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
@@ -124,6 +149,11 @@ func (s *ContentManagementService) CreateContent(ctx context.Context, in *pb.Cre
 		placeholders = append(placeholders, "?")
 		values = append(values, val)
 	}
+
+	// add the creator_id to the columns and VALUES
+	columns = append(columns, "creator_id")
+	placeholders = append(placeholders, "?")
+	values = append(values, in.CreatorId)
 
 	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", in.TableName, strings.Join(columns, ","), strings.Join(placeholders, ","))
 
@@ -157,11 +187,24 @@ func (s *ContentManagementService) UpdateContent(ctx context.Context, in *pb.Upd
 		values = append(values, val)
 	}
 
-	query := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", in.TableName, strings.Join(columns, ","))
+	var query string
+	var result sql.Result
 
-	result, err := s.contentManagementServiceDB.Db.Exec(query, append(values, in.EntityId)...)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to update entity")
+	if in.CreatorId == 0 {
+		query = fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", in.TableName, strings.Join(columns, ","))
+
+		result, err = s.contentManagementServiceDB.Db.Exec(query, append(values, in.EntityId)...)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "Failed to update entity")
+		}
+
+	} else {
+		query = fmt.Sprintf("UPDATE %s SET %s WHERE id = ? AND creator_id = ?  ", in.TableName, strings.Join(columns, ","))
+
+		result, err = s.contentManagementServiceDB.Db.Exec(query, append(values, in.EntityId, in.CreatorId)...)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "Failed to update entity")
+		}
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -200,11 +243,25 @@ func (s *ContentManagementService) ListContent(ctx context.Context, in *pb.ListC
 	}
 
 	// Query for the entities with limit and offset for pagination
-	query := fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", in.TableName)
-	rows, err := s.contentManagementServiceDB.Db.Query(query, in.PerPage, in.PerPage*(in.Page-1))
-	if err != nil {
-		return nil, status.Error(codes.Internal, "Failed to query the database")
+	var query string
+	var rows *sql.Rows
+
+	if in.CreatorId == 0 {
+		query = fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", in.TableName)
+
+		rows, err = s.contentManagementServiceDB.Db.Query(query, in.PerPage, in.PerPage*(in.Page-1))
+		if err != nil {
+			return nil, status.Error(codes.Internal, "Failed to query the database")
+		}
+	} else {
+		query = fmt.Sprintf("SELECT * FROM %s WHERE creator_id = ? LIMIT ? OFFSET ?", in.TableName)
+
+		rows, err = s.contentManagementServiceDB.Db.Query(query, in.CreatorId, in.PerPage, in.PerPage*(in.Page-1))
+		if err != nil {
+			return nil, status.Error(codes.Internal, "Failed to query the database")
+		}
 	}
+
 	defer rows.Close()
 
 	cols, err := rows.Columns()
