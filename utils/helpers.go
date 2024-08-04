@@ -3,15 +3,28 @@ package utils
 import (
 	"database/sql"
 	"fmt"
+	"os"
+
 	"github.com/joho/godotenv"
 )
 
 func LoadEnvVarsFromFile() error {
-	err := godotenv.Load()
-	if err != nil {
-		return err
+	environment := GetGoEnv()
+	if environment == "development" {
+		err := godotenv.Load()
+		if err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func GetGoEnv() string {
+	environment, found := os.LookupEnv("GO_ENV")
+	if !found {
+		return "development"
+	}
+	return environment
 }
 
 func CheckTableExists(db *sql.DB, tableName string) (bool, error) {
