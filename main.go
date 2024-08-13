@@ -245,13 +245,22 @@ func (s *ContentManagementService) ListContent(ctx context.Context, in *pb.ListC
 		totalPages++
 	}
 
+	// init the sqlBuilder
 	sqlBuilder := squirrel.Select("*").
 		From(in.TableName).
 		Limit(uint64(in.PerPage)).
 		Offset(uint64(in.PerPage * (in.Page - 1)))
 
+		// apply the creator_id filter
 	if in.CreatorId != 0 {
 		sqlBuilder = sqlBuilder.Where(squirrel.Eq{"creator_id": in.CreatorId})
+	}
+
+	// apply the filters, i.e. WHERE col = val if filters are provided
+	if in.Filters != nil {
+		for col, val := range in.Filters {
+			sqlBuilder = sqlBuilder.Where(squirrel.Eq{col: val})
+		}
 	}
 
 	sql, args, err := sqlBuilder.ToSql()
