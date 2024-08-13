@@ -2,3 +2,5 @@
 .idea
 makefile
 tmp
+/tmp/
+.air.toml

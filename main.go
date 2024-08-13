@@ -9,6 +9,7 @@ import (
 	"net"
 	"strings"
 
+	"github.com/Masterminds/squirrel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -33,22 +34,24 @@ func (s *ContentManagementService) GetContent(ctx context.Context, in *pb.GetCon
 		return nil, status.Error(codes.NotFound, "Table does not exist")
 	}
 
-	var query string
-	var rows *sql.Rows
+	var sql string
+	var args []interface{}
 	if in.CreatorId == 0 {
-		query = fmt.Sprintf("SELECT * FROM %s WHERE id = ? LIMIT 1", in.TableName)
-
-		rows, err = s.contentManagementServiceDB.Db.Query(query, in.EntityId)
+		sql, args, err = squirrel.Select("*").From(in.TableName).Where(squirrel.Eq{"id": in.EntityId}).ToSql()
 		if err != nil {
-			return nil, status.Error(codes.Internal, "Failed to query the database")
+			return nil, status.Error(codes.Internal, "Failed to build SQL query")
 		}
+
 	} else {
-		query = fmt.Sprintf("SELECT * FROM %s WHERE id = ? AND creator_id = ? LIMIT 1", in.TableName)
-
-		rows, err = s.contentManagementServiceDB.Db.Query(query, in.EntityId, in.CreatorId)
+		sql, args, err = squirrel.Select("*").From(in.TableName).Where(squirrel.Eq{"id": in.EntityId, "creator_id": in.CreatorId}).ToSql()
 		if err != nil {
-			return nil, status.Error(codes.Internal, "Failed to query the database")
+			return nil, status.Error(codes.Internal, "Failed to build SQL query")
 		}
+	}
+
+	rows, err := s.contentManagementServiceDB.Db.Query(sql, args...)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to query the database")
 	}
 
 	defer rows.Close()
@@ -242,24 +245,23 @@ func (s *ContentManagementService) ListContent(ctx context.Context, in *pb.ListC
 		totalPages++
 	}
 
-	// Query for the entities with limit and offset for pagination
-	var query string
-	var rows *sql.Rows
+	sqlBuilder := squirrel.Select("*").
+		From(in.TableName).
+		Limit(uint64(in.PerPage)).
+		Offset(uint64(in.PerPage * (in.Page - 1)))
 
-	if in.CreatorId == 0 {
-		query = fmt.Sprintf("SELECT * FROM %s LIMIT ? OFFSET ?", in.TableName)
+	if in.CreatorId != 0 {
+		sqlBuilder = sqlBuilder.Where(squirrel.Eq{"creator_id": in.CreatorId})
+	}
 
-		rows, err = s.contentManagementServiceDB.Db.Query(query, in.PerPage, in.PerPage*(in.Page-1))
-		if err != nil {
-			return nil, status.Error(codes.Internal, "Failed to query the database")
-		}
-	} else {
-		query = fmt.Sprintf("SELECT * FROM %s WHERE creator_id = ? LIMIT ? OFFSET ?", in.TableName)
+	sql, args, err := sqlBuilder.ToSql()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to build SQL query")
+	}
 
-		rows, err = s.contentManagementServiceDB.Db.Query(query, in.CreatorId, in.PerPage, in.PerPage*(in.Page-1))
-		if err != nil {
-			return nil, status.Error(codes.Internal, "Failed to query the database")
-		}
+	rows, err := s.contentManagementServiceDB.Db.Query(sql, args...)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "Failed to query the database")
 	}
 
 	defer rows.Close()
